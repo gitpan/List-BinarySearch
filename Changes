@@ -1,12 +1,30 @@
 Revision history for List-BinarySearch
 
-0.05		05-01-2012 11:33pm PDT
-	- STATUS:
-		- Stable.
-	- BUG FIXES:
-		- POD corrections
-			- Example code.
-			- Spelling.
+0.06        05-04-2012 03:22pm PDT
+    - STATUS
+        - Stable.
+    - BUG FIXES:
+        - None.
+    - API CHANGES:
+        - Added five functions:
+            bsearch_str_pos - Return value always gives an insert-position.
+            bsearch_num_pos - Return value always gives an insert-position.
+            bsearch_str_range - Return a range.
+            bsearch_num_range - Return a range.
+            bsearch_general_range - Given a pair of targets returns a range
+                                    of element indices between (inclusive).
+    - USER ENHANCEMENTS:
+        - Five new functions: See above.
+    - OTHER ENHANCEMENTS:
+        - Tests added for five new functions.
+
+0.05        05-01-2012 11:33pm PDT
+    - STATUS:
+        - Stable.
+    - BUG FIXES:
+        - POD corrections
+            - Example code.
+            - Spelling.
 
 0.04        04-30-2012 9:11am PDT
     - STATUS:

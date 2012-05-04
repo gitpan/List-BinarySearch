@@ -15,8 +15,11 @@ require Exporter;
 
 our @ISA       = qw(Exporter);    ## no critic (ISA)
 our @EXPORT_OK = qw(
-    bsearch_str     bsearch_num     bsearch_custom
-    bsearch_general bsearch_transform
+  bsearch_str       bsearch_str_pos     bsearch_str_range
+  bsearch_num       bsearch_num_pos     bsearch_num_range
+  bsearch_general                       bsearch_general_range
+  bsearch_custom    
+  bsearch_transform 
 );
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 
@@ -26,21 +29,274 @@ our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 
 ## no critic (prototypes)
 
+our $VERSION = '0.06';
+
+# Needed for developer's releases: See perlmodstyle.
+# $VERSION = eval $VERSION;    ## no critic (eval,version)
+
+
+# There is a lot of repetition in the code.  This is an intentional means of
+# favoring a small amount of computational efficiency over concise code by
+# avoiding unnecessary function call overhead.
+
+
+# Search using stringwise comparisons.  Return an index on success, undef or
+# an empty list (depending on context) upon failure.
+
+sub bsearch_str ($\@) {
+    my ( $target, $aref ) = @_;
+    my $min = 0;
+    my $max = $#{$aref};
+    while ( $max > $min ) {
+        my $mid = int( ( $min + $max ) / 2 );
+        if ( $target gt $aref->[$mid] ) {
+            $min = $mid + 1;
+        }
+        else {
+            $max = $mid;
+        }
+    }
+
+    return $min
+      if $max == $min && $target eq $aref->[$min];
+
+    return;
+}
+
+
+# Search using numeric comparisons.
+
+sub bsearch_num ($\@) {
+    my ( $target, $aref ) = @_;
+    my $min = 0;
+    my $max = $#{$aref};
+    while ( $max > $min ) {
+        my $mid = int( ( $min + $max ) / 2 );
+        if ( $target > $aref->[$mid] ) {
+            $min = $mid + 1;
+        }
+        else {
+            $max = $mid;
+        }
+    }
+    return $min
+      if $max == $min && $target == $aref->[$min];
+    return;    # Undef in scalar context, empty list in list context.
+}
+
+
+# Detect whether to search using string or numeric comparisons, then perform
+# the search.
+
+sub bsearch_general ($\@) {
+    my ( $target, $aref ) = @_;
+    my $min = 0;
+    my $max = $#{$aref};
+    if ( looks_like_number $target ) {
+        while ( $max > $min ) {
+            my $mid = int( ( $min + $max ) / 2 );
+            if ( $target > $aref->[$mid] ) {
+                $min = $mid + 1;
+            }
+            else {
+                $max = $mid;
+            }
+        }
+        return $min
+          if $max == $min && $target == $aref->[$min];
+    }
+    else {                                                  # Stringwise.
+        while ( $max > $min ) {
+            my $mid = int( ( $min + $max ) / 2 );
+            if ( $target gt $aref->[$mid] ) {
+                $min = $mid + 1;
+            }
+            else {
+                $max = $mid;
+            }
+        }
+        return $min
+          if $max == $min && $target eq $aref->[$min];
+    }
+    
+    return;
+}
+
+
+
+# Use a callback for comparisons.
+
+sub bsearch_custom (&$\@) {
+    my ( $code, $target, $aref ) = @_;
+    my $min = 0;
+    my $max = $#{$aref};
+    while ( $max > $min ) {
+        my $mid = int( ( $min + $max ) / 2 );
+        if ( $code->( $target, $aref->[$mid] ) > 0 ) {
+            $min = $mid + 1;
+        }
+        else {
+            $max = $mid;
+        }
+    }
+
+    return $min
+      if $max == $min && $code->( $target, $aref->[$min] ) == 0;
+
+    return;    # Undef in scalar context, empty list in list context.
+}
+
+
+# Use a callback to transform the list elements before comparing.  Comparisons
+# will be stringwise or numeric depending on what target looks like.
+
+sub bsearch_transform (&$\@) {
+    my ( $transform_code, $target, $aref ) = @_;
+    my ( $min, $max ) = ( 0, $#{$aref} );
+
+    if ( looks_like_number $target ) {
+        while ( $max > $min ) {
+            my $mid = int( ( $min + $max ) / 2 );
+            if ( $target > $transform_code->( $aref->[$mid] ) ) {
+                $min = $mid + 1;
+            }
+            else {
+                $max = $mid;
+            }
+        }
+        return $min
+          if $max == $min && $target == $transform_code->( $aref->[$min] );
+    }
+    else {
+        while ( $max > $min ) {
+            my $mid = int( ( $min + $max ) / 2 );
+            if ( $target gt $transform_code->( $aref->[$mid] ) ) {
+                $min = $mid + 1;
+            }
+            else {
+                $max = $mid;
+            }
+        }
+        return $min
+          if $max == $min && $target eq $transform_code->( $aref->[$min] );
+    }
+
+    return;    # Undef in scalar context, empty list in list context.
+}
+
+
+
+# Virtually identical to bsearch_str, but upon match-failure returns best
+# insert position for $target.
+
+sub bsearch_str_pos ($\@) {
+    my ( $target, $aref ) = @_;
+    my ( $low, $high ) = ( 0, scalar @{$aref} );
+    while ( $low < $high ) {
+        use integer;
+        my $cur = ( $low + $high ) / 2;
+        if ( $aref->[$cur] lt $target ) {
+            $low = $cur + 1;    # too small, try higher
+        }
+        else {
+            $high = $cur;       # not too small, try lower
+        }
+    }
+    return $low;
+}
+
+
+# Identical to bsearch_num, but upon match-failure returns best insert
+# position for $target.
+
+sub bsearch_num_pos ($\@) {
+    my ( $target, $aref ) = @_;
+    my ( $low, $high ) = ( 0, scalar @{$aref} );
+    while ( $low < $high ) {
+        my $cur = int( ( $low + $high ) / 2 );
+        if ( $aref->[$cur] < $target ) {
+            $low = $cur + 1;    # too small, try higher
+        }
+        else {
+            $high = $cur;       # not too small, try lower
+        }
+    }
+    return $low;
+}
+
+
+
+# Given a low and a high target, returns a range of indices representing
+# where low and high fit into @haystack.
+
+sub bsearch_str_range ($$\@) {
+    my ( $low_target, $high_target, $aref ) = @_;
+    my $index_low  = bsearch_str_pos( $low_target,  @{$aref} );
+    my $index_high = bsearch_str_pos( $high_target, @{$aref} );
+    if (   $index_high == @{$aref}
+        or $aref->[$index_high] gt $high_target )
+    {
+        $index_high--;
+    }
+    return ( $index_low, $index_high );
+}
+
+
+
+sub bsearch_num_range ($$\@) {
+    my ( $low_target, $high_target, $aref ) = @_;
+    my $index_low  = bsearch_num_pos( $low_target,  @{$aref} );
+    my $index_high = bsearch_num_pos( $high_target, @{$aref} );
+    if (   $index_high == @{$aref}
+        or $aref->[$index_high] > $high_target )
+    {
+        $index_high--;
+    }
+    return ( $index_low, $index_high );
+}
+
+
+
+sub bsearch_general_range ($$\@) {
+    my ( $low_target, $high_target, $aref ) = @_;
+    my ( $index_low, $index_high );
+    if ( looks_like_number $low_target and looks_like_number $high_target ) {
+        $index_low  = bsearch_num_pos( $low_target,  @{$aref} );
+        $index_high = bsearch_num_pos( $high_target, @{$aref} );
+        if (   $index_high == @{$aref}
+            or $aref->[$index_high] > $high_target )
+        {
+            $index_high--;
+        }
+    }
+    else {
+        $index_low  = bsearch_str_pos( $low_target,  @{$aref} );
+        $index_high = bsearch_str_pos( $high_target, @{$aref} );
+        if (   $index_high == @{$aref}
+            or $aref->[$index_high] gt $high_target )
+        {
+            $index_high--;
+        }
+    }
+    return ( $index_low, $index_high );
+}
+
+1;    # End of List::BinarySearch
+
+__END__
+
 =head1 NAME
 
 List::BinarySearch - Binary Search a sorted list or array.
 
 =head1 VERSION
 
-Version 0.05
+Version 0.06
 
 Stable release.
 
-=cut
+New functions: bsearch_num_pos, bsearch_str_pos, bsearch_general_range.
 
-our $VERSION = '0.05';
-
-# $VERSION = eval $VERSION;    ## no critic (eval,version)
 
 =head1 SYNOPSIS
 
@@ -52,8 +308,11 @@ Examples:
 
     use List::BinarySearch qw( :all );
     use List::BinarySearch qw(
-        bsearch_str         bsearch_num         bsearch_general
-        bsearch_custom      bsearch_transform
+        bsearch_str         bsearch_str_pos         bsearch_str_range
+        bsearch_num         bsearch_num_pos         bsearch_num_range
+        bsearch_general                             bsearch_general_range
+        bsearch_custom
+        bsearch_transform
     );
 
 
@@ -62,7 +321,7 @@ Examples:
 
 
     # Find the first index of element containing the number 300.
-
+    
     $index = bsearch_num       300, @num_array;
     $index = bsearch_general   300, @num_array;
     $index = bsearch_custom    { $_[0] <=> $_[1] } 300, @num_array;
@@ -100,6 +359,29 @@ Examples:
 
     $index = bsearch_custom    { $_[0] cmp $_[1][0] } 'one', @complex;
     $index = besarch_transform { $_[1][0]           } 'one', @complex;
+
+
+    # The following functions return an optimal insert point if no match.
+
+    my @str_array = qw( Bach Beethoven Brahms Mozart Schubert );
+    my @num_array =   ( 100, 200, 300, 400 );
+
+    $index = bsearch_str_pos 'Chopin', @str_array; # Returns 3 - Best insert-at position.
+    $index = bsearch_num_pos 500, @num_array; # Returns 4 - Best insert-at position.
+
+
+    # The following functions return an inclusive range.
+
+    my( $low_ix, $high_ix )
+        = bsearch_general_range( 'Beethoven', 'Mozart', @str_array );
+        # Returns ( 1, 3 ), meaning ( 1 .. 3 ).
+
+    my( $low_ix, $high_ix )
+        = bsearch_str_range( 'Beethoven', 'Mozart', @str_array );
+
+    my( $low_ix, $high_ix )
+        = bsearch_num_range( 200, 400, @num_array );
+
 
 
 =head1 DESCRIPTION
@@ -150,9 +432,8 @@ textbooks. Furthermore, Bentley's own implementation of binary search,
 published in his 1986 book Programming Pearls, contains an error that remained
 undetected for over twenty years.>
 
-So the answer to the question "Why use a module for this?" is "Because it has
-already been written and tested.  You don't have to write, test, and debug
-your own implementation.
+So the answer to the question "Why use a module for this?" is "So that you
+don't have to write, test, and debug your own implementation."
 
 Nevertheless, before using this module the user should weigh the other
 options: linear searches ( C<grep> or C<List::Util::first> ), or hash based
@@ -173,13 +454,40 @@ ordered inserts.
 Profile, then benchmark, then consider (and benchmark) the options, and
 finally, optimize.
 
+
+
 =head1 EXPORT
 
 Nothing is exported by default.  Upon request will export C<bsearch_str>,
-C<bsearch_num>, C<bsearch_general>, C<bsearch_custom>, and
-C<bsearch_transform>, or all functions by specifying C<:all>.
+C<bsearch_num>, C<bsearch_general>, C<bsearch_custom>, C<bsearch_transform>,
+C<bsearch_num_pos>, C<bsearch_str_pos>, C<bsearch_str_range>,
+C<bsearch_num_range>, and C<bsearch_general_range>.  Or import all functions
+by specifying C<:all>.
+
+
 
 =head1 SUBROUTINES/METHODS
+
+=head2 SUBROUTINE CATEGORIES
+
+There are three categories of subroutines.  Those that return undef (or an
+empty list in list context) upon failure to find a match; Those that return
+the best insert point for C<$needle> upon failure to find a match; And those
+that return a range of elements spanning from C<$low_needle> to
+C<$high_needle>.
+
+There are also several comparison styles, for use with different sorts of
+data.  The 'str' functions do stringwise comparisons.  The 'num' functions do
+numeric comparisons.  The 'general' functions detect whether C<$needle> is
+numeric or not.  If numeric, numeric comparisons are used.  If not, string
+comparisons are used.
+
+The 'custom' function uses a callback for the comparison.  The 'transform'
+function uses a callback to transform each list element in some user-defined
+way before doing a general comparison.
+
+With that explanation, here are the functions:
+
 
 =head2 bsearch_str STRING_NEEDLE ARRAY_HAYSTACK
 
@@ -190,57 +498,19 @@ value is an index to the first (lowest numbered) matching element in
 C<@haystack>, or C<undef> if nothing is found.  String comparisons are used.
 The target must be an exact and complete match.
 
-=cut
 
-sub bsearch_str ($\@) {
-    my ( $target, $aref ) = @_;
-
-    my $min = 0;
-    my $max = $#{$aref};
-    while ( $max > $min ) {
-        my $mid = int( ( $min + $max ) / 2 );
-        if ( $target gt $aref->[$mid] ) {
-            $min = $mid + 1;
-        }
-        else {
-            $max = $mid;
-        }
-    }
-    return $min
-        if $max == $min && $target eq $aref->[$min];
-    return;    # Undef in scalar context, empty list in list context.
-}
 
 =head2 bsearch_num NUMERIC_NEEDLE ARRAY_HAYSTACK
 
     $first_found_ix = bsearch_num $needle, @haystack;
 
-Finds the numeric needle C<$needle> in the haystack C<@haystack>.  
-Return value is an index to the first (lowest numbered) matching element 
+Finds the numeric needle C<$needle> in the haystack C<@haystack>.
+Return value is an index to the first (lowest numbered) matching element
 in C<@haystack>, or C<undef> if C<$needle> isn't found.
 
 The comparison type is numeric.
 
-=cut
 
-sub bsearch_num ($\@) {
-    my ( $target, $aref ) = @_;
-
-    my $min = 0;
-    my $max = $#{$aref};
-    while ( $max > $min ) {
-        my $mid = int( ( $min + $max ) / 2 );
-        if ( $target > $aref->[$mid] ) {
-            $min = $mid + 1;
-        }
-        else {
-            $max = $mid;
-        }
-    }
-    return $min
-        if $max == $min && $target == $aref->[$min];
-    return;    # Undef in scalar context, empty list in list context.
-}
 
 =head2 bsearch_general NEEDLE ARRAY_HAYSTACK
 
@@ -256,40 +526,7 @@ extra magic is a convenience that does incur a small performance penalty.
 
 If C<$haystack> isn't found, the return value will be C<undef>.
 
-=cut
 
-sub bsearch_general ($\@) {
-    my ( $target, $aref ) = @_;
-    my $min = 0;
-    my $max = $#{$aref};
-    if ( looks_like_number $target ) {
-        while ( $max > $min ) {
-            my $mid = int( ( $min + $max ) / 2 );
-            if ( $target > $aref->[$mid] ) {
-                $min = $mid + 1;
-            }
-            else {
-                $max = $mid;
-            }
-        }
-        return $min
-            if $max == $min && $target == $aref->[$min];
-    }
-    else {
-        while ( $max > $min ) {
-            my $mid = int( ( $min + $max ) / 2 );
-            if ( $target gt $aref->[$mid] ) {
-                $min = $mid + 1;
-            }
-            else {
-                $max = $mid;
-            }
-        }
-        return $min
-            if $max == $min && $target eq $aref->[$min];
-    }
-    return;    # Undef in scalar context, empty list in list context.
-}
 
 =head2 bsearch_custom CODE NEEDLE ARRAY_HAYSTACK
 
@@ -297,8 +534,8 @@ sub bsearch_general ($\@) {
     $first_found_ix = bsearch_custom \&comparator,       $needle, @haystack;
 
 Pass a code block or subref, a search target, and an array to search.  Uses
-the subroutine supplied in the code block or subref callback to test C<$needle>
-against elements in C<@haystack>.
+the subroutine supplied in the code block or subref callback to test
+C<$needle> against elements in C<@haystack>.
 
 Return value is the index of the first element equaling C<$needle>.  If no
 element is found, undef is returned.
@@ -310,27 +547,7 @@ hand side of the comparison must refer to the C<$_[1]...>, where C<...> is
 the portion of the data structure to be used in the comparison: C<$_[1][$n]>,
 or C<$_[1]{$k}>, for example.
 
-=cut
 
-sub bsearch_custom (&$\@) {
-
-    my ( $code, $target, $aref ) = @_;
-
-    my $min = 0;
-    my $max = $#{$aref};
-    while ( $max > $min ) {
-        my $mid = int( ( $min + $max ) / 2 );
-        if ( $code->( $target, $aref->[$mid] ) > 0 ) {
-            $min = $mid + 1;
-        }
-        else {
-            $max = $mid;
-        }
-    }
-    return $min
-        if $max == $min && $code->( $target, $aref->[$min] ) == 0;
-    return;    # Undef in scalar context, empty list in list context.
-}
 
 =head2 bsearch_transform CODE NEEDLE ARRAY_HAYSTACK
 
@@ -352,41 +569,88 @@ C<bsearch_custom>.
 If no transformation is needed, use C<bsearch_str>, C<bsearch_num>, or
 C<bsearch_custom>.
 
-=cut
 
-sub bsearch_transform (&$\@) {
 
-    my ( $transform_code, $target, $aref ) = @_;
-    my ( $min, $max ) = ( 0, $#{$aref} );
+=head2 bsearch_str_pos STRING_NEEDLE ARRAY_HAYSTACK
 
-    if ( looks_like_number $target ) {
-        while ( $max > $min ) {
-            my $mid = int( ( $min + $max ) / 2 );
-            if ( $target > $transform_code->( $aref->[$mid] ) ) {
-                $min = $mid + 1;
-            }
-            else {
-                $max = $mid;
-            }
-        }
-        return $min
-            if $max == $min && $target == $transform_code->( $aref->[$min] );
+    $first_found_ix = bsearch_str_pos $needle, @haystack;
+
+The only difference between this function and C<bsearch_str> is its return
+value upon failure.  C<bsearch_str> returns undef upon failure.
+C<bsearch_str_pos> returns the index of a valid insert point for C<$needle>
+
+Finds the string specified by C<$needle> in the array C<@haystack>.  Return
+value is an index to the first (lowest numbered) matching element in
+C<@haystack>.  If C<$needle> isn't found, return value is the index of where
+C<$needle> could appropriately be inserted.  String comparisons are used.
+The target must be an exact and complete match.
+
+The position returned upon failure to find C<$needle> satisfies these
+requirements:  If C<$needle> is greater than all elements in C<@haystack>,
+then the return value will be equal to C<scalar @haystack>.  If C<$needle> is
+within the range represented by C<@haystack>, the return value will be the
+index of the first element greater in value than C<$needle>.  In either case,
+the following code could then be used to add C<$needle> to C<@haystack> if it
+isn't found:
+
+    my $index = bsearch_str_pos $needle, @haystack;
+    if( $needle ne $haystack[$index] ) {
+        splice @haystack, $index, 0, $needle;
     }
-    else {
-        while ( $max > $min ) {
-            my $mid = int( ( $min + $max ) / 2 );
-            if ( $target gt $transform_code->( $aref->[$mid] ) ) {
-                $min = $mid + 1;
-            }
-            else {
-                $max = $mid;
-            }
-        }
-        return $min
-            if $max == $min && $target eq $transform_code->( $aref->[$min] );
+
+
+
+=head2 bsearch_num_pos NUMERIC_NEEDLE ARRAY_HAYSTACK
+
+    $first_found_ix = bsearch_num_pos $needle, @haystack;
+
+The only difference between this function and C<bsearch_num> is its return
+value upon failure.  C<bsearch_num> returns undef upon failure.
+C<bsearch_num_pos> returns the index of a valid insert point for C<$needle>
+
+Finds the string specified by C<$needle> in the array C<@haystack>.  Return
+value is an index to the first (lowest numbered) matching element in
+C<@haystack>.  If C<$needle> isn't found, return value is the index of where
+C<$needle> could appropriately be inserted.  String comparisons are used.
+The target must be an exact and complete match.
+
+The position returned upon failure to find C<$needle> satisfies these
+requirements:  If C<$needle> is greater than all elements in C<@haystack>,
+then the return value will be equal to C<scalar @haystack>.  If C<$needle> is
+less than, or within the range represented by C<@haystack>, the return value
+will be the index of the first element greater in value than C<$needle>.  In
+either case, the following code could then be used to add C<$needle> to
+C<@haystack> if it isn't found:
+
+    my $index = bsearch_num_pos $needle, @haystack;
+    if( $needle != $haystack[$index] ) {
+        splice @haystack, $index, 0, $needle;
     }
-    return;    # Undef in scalar context, empty list in list context.
-}
+
+
+=head2 bsearch_str_range LOW_STRING_NEEDLE HIGH_STRING_NEEDLE ARRAY_HAYSTACK
+
+=head2 bsearch_num_range LOW_NUMERIC_NEEDLE HIGH_NUMERIC_NEEDLE ARRAY_HAYSTACK
+
+=head2 bsearch_general_range LOW_NEEDLE HIGH_NEEDLE ARRAY_HAYSTACK
+
+    $first_found_ix = bsearch_general_range $low_needle, $high_needle, @haystack;
+
+Return a pair of indices that represent an inclusive range of elements from
+C<$low_needle> through C<$high_needle>.  Use string comparison, numeric
+comparison, or in the case of the 'general' function, automatically detect
+whether both targets are numeric, or not.  If both targets are numeric,
+numeric comparisons are used in the search.  Otherwise, string comparisons
+are used.
+
+
+Here's an example:
+
+    my @haystack = ( 100, 200, 300, 400, 500 );
+    my( $low, $high ) = bsearch_general_range 200, 400, @haystack;
+    my @found = @haystack[ $low .. $high ]; # @found holds ( 200, 300, 400 ).
+
+
 
 =head2 \&comparator
 
@@ -447,6 +711,7 @@ like this:
     # prints 'cat'
 
 
+
 =head2 \&transform
 
 B<(callback)>
@@ -470,7 +735,7 @@ integer/string pair, the transform sub might be written like this:
         return $_[0][0];    # Returns 100, 200, 300, etc.
     }
 
-Or if the goal is instead to search by the second element of each 
+Or if the goal is instead to search by the second element of each
 int/str pair, the sub would instead look like this:
 
     sub transform {
@@ -485,6 +750,8 @@ function:
 ...but just use C<bsearch_general>, because that's what it does, without
 the callback.
 
+
+
 =head1 DATA SET REQUIREMENTS
 
 A well written general algorithm should place as few demands on its data as
@@ -496,37 +763,37 @@ are:
 =item * B<The lists must be in ascending sorted order>.
 
 This is a big one.  Keep in mind that the best sort routines run in
-O(n log n) time.  It makes no sense to sort a list in O(n log n), and 
-then perform a single O(log n) binary search when List::Util C<first> 
-could accomplish the same thing in O(n) time.  A Binary Search only 
-makes sense if there are other good reasons for keeping the data set 
+O(n log n) time.  It makes no sense to sort a list in O(n log n), and
+then perform a single O(log n) binary search when List::Util C<first>
+could accomplish the same thing in O(n) time.  A Binary Search only
+makes sense if there are other good reasons for keeping the data set
 sorted in the first place.
 
-B<Passing an unsorted list to these Binary Search algorithms will result 
+B<Passing an unsorted list to these Binary Search algorithms will result
 in undefined behavior.  There is validity checking.>
 
-A Binary Search consumes O(log n) time.  It would, therefore, be foolish 
-for these algorithms to pre-check the list for sortedness, as that would 
-require linear, or O(n) time.  Since no sortedness testing is done, 
-there can be no guarantees as to what will happen if an unsorted list is 
+A Binary Search consumes O(log n) time.  It would, therefore, be foolish
+for these algorithms to pre-check the list for sortedness, as that would
+require linear, or O(n) time.  Since no sortedness testing is done,
+there can be no guarantees as to what will happen if an unsorted list is
 passed to a binary search.
 
-=item * Data that is more complex than simple numeric or string lists 
-will require a custom comparator or transform subroutine.  This includes 
+=item * Data that is more complex than simple numeric or string lists
+will require a custom comparator or transform subroutine.  This includes
 search keys that are buried within data structures.
 
-=item * These functions are prototyped, either as (&$\@), or as ($\@).  
-What this implementation detail means is that C<@haystack> is implicitly 
-and invisibly passed by reference.  Thus, bare lists will not work.  
-This downside of prototypes is an unfortunate side effect of specifying 
-an API thatclosely matches the one commonly used with List::Util and 
-List::MoreUtils functions.  It can contribute to surprise when the user 
-tries to pass a bare list.  The upside is a more familiar user 
+=item * These functions are prototyped, either as (&$\@), or as ($\@).
+What this implementation detail means is that C<@haystack> is implicitly
+and invisibly passed by reference.  Thus, bare lists will not work.
+This downside of prototypes is an unfortunate side effect of specifying
+an API thatclosely matches the one commonly used with List::Util and
+List::MoreUtils functions.  It can contribute to surprise when the user
+tries to pass a bare list.  The upside is a more familiar user
 interface, and the efficiency of pass-by-ref.
 
-
-
 =back
+
+
 
 =head1 CONFIGURATION AND ENVIRONMENT
 
@@ -535,15 +802,21 @@ environment or configuration concerns to address.  In the future, an XS plugin
 will be implemented, and at that time there may be additional configuration
 details in this section.
 
+
+
 =head1 DEPENDENCIES
 
 This module uses L<Exporter|Exporter> and L<Scalar::Util|Scalar::Util>, both
 of which are core modules.  Installation requires L<Test::More|Test::More>,
 which is also a core module.
 
+
+
 =head1 INCOMPATIBILITIES
 
 This module hasn't been tested on Perl versions that predate Perl 5.6.0.
+
+
 
 =head1 AUTHOR
 
@@ -552,7 +825,10 @@ David Oswald, C<< <davido at cpan.org> >>
 If the documentation fails to answer your question, or if you have a comment
 or suggestion, send me an email.
 
+
+
 =head1 DIAGNOSTICS
+
 
 
 =head1 BUGS AND LIMITATIONS
@@ -562,6 +838,7 @@ C<bug-list-binarysearch at rt.cpan.org>, or through the web interface at
 L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=List-BinarySearch>.  I will
 be notified, and then you'll automatically be notified of progress on your bug
 as I make changes.
+
 
 
 =head1 SUPPORT
@@ -598,16 +875,26 @@ L<http://search.cpan.org/dist/List-BinarySearch/>
 =back
 
 
+
 =head1 ACKNOWLEDGEMENTS
 
-A thank-you to L<http://search.cpan.org/~corion/|Max Maischein> for being a
-willing and helpful sounding board on API issues, and for spotting some POD
-problems.
+Thank-you to L<http://search.cpan.org/~corion/|Max Maischein> (Corion) for
+being a willing and helpful sounding board on API issues, and for spotting
+some POD problems.
+
+L<http://shop.oreilly.com/product/9781565923980.do|Mastering Algorithms with Perl>,
+from L<http://www.oreilly.com|O'Reilly>: for the inspiration (and much of the
+code) behind the positional and ranged searches.  Quoting MAwP: "I<...the
+binary search was first documented in 1946 but the first algorithm that worked
+for all sizes of array was not published until 1962.>" (A summary of a passage
+from Knuth: Sorting and Searching, 6.2.1.)
 
 I<Necessity, who is the mother of invention.> -- plato.
 
 I<Although the basic idea of binary search is comparatively straightforward,
 the details can be surprisingly tricky...>  -- Donald Knuth
+
+
 
 =head1 LICENSE AND COPYRIGHT
 
@@ -619,7 +906,4 @@ by the Free Software Foundation; or the Artistic License.
 
 See http://dev.perl.org/licenses/ for more information.
 
-
 =cut
-
-1;    # End of List::BinarySearch
