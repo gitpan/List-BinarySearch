@@ -28,4 +28,4 @@ provides:
 requires:
   Scalar::Util: 0
   perl: 5.006000
-version: 0.11_003
+version: 0.12
