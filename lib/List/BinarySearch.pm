@@ -16,6 +16,9 @@ BEGIN {
 
   # Import XS by default, pure-Perl if XS is unavailable, or if
   # $ENV{List_BinarySearch_PP} is set.
+
+  # This conditional has been tested manually.  Can't be automatically tested.
+  # uncoverable condition right false
   if (
        $ENV{List_BinarySearch_PP}
     || ! eval 'use List::BinarySearch::XS @imports; 1;'  ## no critic (eval)
@@ -33,184 +36,23 @@ require Exporter;
 our @ISA       = qw(Exporter);    ## no critic (ISA)
 
 # Note: binsearch and binsearch_pos come from List::BinarySearch::PP
-our @EXPORT_OK = qw(
-  binsearch         binsearch_pos       binsearch_range
-
-  bsearch_str       bsearch_str_pos     bsearch_str_range
-  bsearch_num       bsearch_num_pos     bsearch_num_range
-  bsearch_custom    bsearch_custom_pos  bsearch_custom_range
-  bsearch_transform
-);
+our @EXPORT_OK = qw(  binsearch         binsearch_pos       binsearch_range  );
 
 our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 
 # The prototyping gives List::BinarySearch a similar feel to List::Util,
 # and List::MoreUtils.
 
-our $VERSION = '0.13_001';
+our $VERSION = '0.14';
 
 # Needed for developer's releases: See perlmodstyle.
-$VERSION = eval $VERSION;    ## no critic (eval,version)
-
-# There is some repetition in the code.  This is an intentional means of
-# favoring a small amount of computational efficiency over concise code by
-# avoiding unnecessary function call overhead.
-
-
-# DEPRECATED -----------------------------------
-
-# Search using stringwise comparisons.  Return an index on success, undef or
-# an empty list (depending on context) upon failure.
-
-sub bsearch_str ($\@) {
-    my( $target, $aref ) = @_;
-    my $min = 0;
-    my $max = $#{$aref};
-    while ( $max > $min ) {
-        my $mid = int( ( $min + $max ) / 2 );
-        if ( $target gt $aref->[$mid] ) {
-            $min = $mid + 1;
-        }
-        else {
-            $max = $mid;
-        }
-    }
-
-    return $min
-      if $max == $min && $target eq $aref->[$min];
-
-    return;
-}
-#---------------------------------------------
-
-# Search using numeric comparisons.
-# DEPRECATED ---------------------------------
-sub bsearch_num ($\@) {
-    my ( $target, $aref ) = @_;
-    my $min = 0;
-    my $max = $#{$aref};
-    while ( $max > $min ) {
-        my $mid = int( ( $min + $max ) / 2 );
-        if ( $target > $aref->[$mid] ) {
-            $min = $mid + 1;
-        }
-        else {
-            $max = $mid;
-        }
-    }
-    return $min
-      if $max == $min && $target == $aref->[$min];
-    return;    # Undef in scalar context, empty list in list context.
-}
+# $VERSION = eval $VERSION;    ## no critic (eval,version)
 
 
 
-# DEPRECATED -------------------------------
-sub bsearch_custom(&$\@);
-*bsearch_custom = \&binsearch;
-# ------------------------------------------
+# binsearch and binsearch_pos will be loaded from List::BinarySearch::PP or
+# List::BinarySearch::XS.
 
-# Use a callback to transform the list elements before comparing.  Comparisons
-# will be stringwise or numeric depending on what target looks like.
-
-# DEPRECATED -------------------------------
-sub bsearch_transform (&$\@) {
-    my ( $transform_code, $target, $aref ) = @_;
-    my ( $min, $max ) = ( 0, $#{$aref} );
-
-    if ( looks_like_number $target ) {
-        while ( $max > $min ) {
-            my $mid = int( ( $min + $max ) / 2 );
-            if ( $target > $transform_code->( $aref->[$mid] ) ) {
-                $min = $mid + 1;
-            }
-            else {
-                $max = $mid;
-            }
-        }
-        return $min
-          if $max == $min && $target == $transform_code->( $aref->[$min] );
-    }
-    else {
-        while ( $max > $min ) {
-            my $mid = int( ( $min + $max ) / 2 );
-            if ( $target gt $transform_code->( $aref->[$mid] ) ) {
-                $min = $mid + 1;
-            }
-            else {
-                $max = $mid;
-            }
-        }
-        return $min
-          if $max == $min && $target eq $transform_code->( $aref->[$min] );
-    }
-
-    return;    # Undef in scalar context, empty list in list context.
-}
-
-# ----------------------------------------------------
-# Virtually identical to bsearch_str, but upon match-failure returns best
-# insert position for $target.
-
-# DEPRECATED ------------------------------------------
-sub bsearch_str_pos ($\@) {
-    my ( $target, $aref ) = @_;
-    my ( $low, $high ) = ( 0, scalar @{$aref} );
-    while ( $low < $high ) {
-        use integer;
-        my $cur = ( $low + $high ) / 2;
-        if ( $target gt $aref->[$cur] ) {
-            $low = $cur + 1;    # too small, try higher
-        }
-        else {
-            $high = $cur;       # not too small, try lower
-        }
-    }
-    return $low;
-}
-#------------------------------------------------------
-
-# Identical to bsearch_num, but upon match-failure returns best insert
-# position for $target.
-
-# DEPRECATED ------------------------------------------
-sub bsearch_num_pos ($\@) {
-    my ( $target, $aref ) = @_;
-    my ( $low, $high ) = ( 0, scalar @{$aref} );
-    while ( $low < $high ) {
-        my $cur = int( ( $low + $high ) / 2 );
-        if ( $target > $aref->[$cur] ) {
-            $low = $cur + 1;    # too small, try higher
-        }
-        else {
-            $high = $cur;       # not too small, try lower
-        }
-    }
-    return $low;
-}
-
-
-# DEPRECATED --------------------------------------------
-sub bsearch_custom_pos(&$\@);
-*bsearch_custom_pos = \&binsearch_pos;
-#--------------------------------------------------------
-
-# Given a low and a high target, returns a range of indices representing
-# where low and high fit into @haystack.
-
-# DEPRECATED -------------------------------------------
-sub bsearch_str_range ($$\@) {
-    my ( $low_target, $high_target, $aref ) = @_;
-    my $index_low  = bsearch_str_pos( $low_target,  @{$aref} );
-    my $index_high = bsearch_str_pos( $high_target, @{$aref} );
-    if (   $index_high == scalar @{$aref}
-        or $aref->[$index_high] gt $high_target )
-    {
-        $index_high--;
-    }
-    return ( $index_low, $index_high );
-}
-# -----------------------------------------------------
 
 
 sub binsearch_range (&$$\@) {
@@ -233,26 +75,6 @@ sub binsearch_range (&$$\@) {
   return ( $index_low, $index_high );
 }
 
-
-# DEPRECATED -------------------------------------------
-sub bsearch_custom_range(&$$\@);
-*bsearch_custom_range = \&binsearch_range;
-# ------------------------------------------------------
-
-# DEPRECATED -------------------------------------------
-sub bsearch_num_range ($$\@) {
-    my ( $low_target, $high_target, $aref ) = @_;
-    my $index_low  = bsearch_num_pos( $low_target,  @{$aref} );
-    my $index_high = bsearch_num_pos( $high_target, @{$aref} );
-    if (   $index_high == scalar @{$aref}
-        or $aref->[$index_high] > $high_target )
-    {
-        $index_high--;
-    }
-    return ( $index_low, $index_high );
-}
-
-# ------------------------------------------------------
 
 
 1;    # End of List::BinarySearch
@@ -497,60 +319,6 @@ element.
 Just as with C<sort>, the comparator must return -1, 0, or 1 to signify "less
 than", "equal to", or "greater than".
 
-=head2 DEPRECATED FUNCTIONS
-
-B<The following have been deprecated and should not be used.>  They will be
-eliminated in a near-future version of L<List::BinarySearch>.  The companion
-module, L<List::BinarySearch::XS> provides enough performance gain as to render
-numeric-specialized and string-specialized versions of the binary search routine
-obsolete.  If you need high performance, install List::BinarySearch::XS.
-
-=head3 bsearch_custom
-
-Replaced by binsearch. Same syntax.
-
-=head3 bsearch_custom_pos
-
-Replaced by binsearch_pos. Same syntax.
-
-=head3 bsearch_custom_range
-
-Replaced by binsearch_range. Same syntax.
-
-=head3 bsearch_str
-
-Instead use C<< binsearch { $a cmp $b } $needle, @haystack; >>.
-
-=head3 bsearch_str_pos
-
-Instead use C<< binsearch_pos { $a cmp $b } $needle, @haystack; >>.
-
-=head3 bsearch_str_range
-
-Instead use C<< binsearch_range { $a cmp $b } $needle, @haystack; >>.
-
-=head3 bsearch_num
-
-Instead use C<< binsearch { $a <=> $b } $needle, @haystack; >>.
-
-=head3 bsearch_num_pos
-
-Instead use C<< binsearch_pos { $a <=> $b } $needle, @haystack; >>.
-
-=head3 bsearch_num_range
-
-Instead use C<< binsearch_range { $a <=> $b } $needle, @haystack; >>.
-
-=head3 bsearch_transform
-
-Instead use C<< binsearch { $comparator->($a,$b) } $needle, @haystack; >>.
-
-Also, the old "pass by @_" callbacks have been deprecated in favor of callbacks
-that use C<$a> and C<$b>.  If you have been using:
-C<< bsearch_custom {$_[0] <=>$_[1]} $needle, @haystack; >>, instead use:
-C<< binsearch { $a <=> $b } $needle, @haystack; >>.  It's much easier on
-the eyes.
-
 
 =head1 DATA SET REQUIREMENTS
 
@@ -599,6 +367,10 @@ L<Unicode::Collate>'s C<< $Collator->cmp($a,$b) >>:
 
 =head1 CONFIGURATION AND ENVIRONMENT
 
+List::BinarySearch is a thin layer that will attempt to load
+List::BinarySearch::XS first, and if that module is unavailable, will fall back
+to List::BinarySearch::PP which is provided with this distribution.
+
 Most CPAN installers will automatically pull in and install the XS plugin 
 for this module.  If in interactive mode, they will prompt first. To override 
 default behavior, forcing CPAN installers to I<not> pull in the XS module, 
@@ -607,9 +379,9 @@ will be no prompt, and the XS module won't be pulled in and installed.
 However, the List::BinarySearch::XS plugin is strongly recommended, and should
 only be skipped in environments where XS modules cannot be compiled.
 
-There is nothing special about this process; if one wishes to install the XS
-module beforhand, or at any time later on, just installing it in the usual
-fashion is sufficient for List::BinarySearch to recognize and start using it.
+If one wishes to install the XS module beforhand, or at any time later on, just
+installing it in the usual fashion is sufficient for List::BinarySearch to
+recognize and start using it.
 
 By installing L<List::BinarySearch::XS>, the pure-Perl versions of C<binsearch>
 and C<binsearch_pos> will be automatically replaced with XS versions for
@@ -632,9 +404,9 @@ pure-Perl version if the XS module can't be loaded.
 This module uses L<Exporter|Exporter>, and automatically makes use of
 L<List::BinarySearch::XS> if it's installed on the user's system.
 
-This module will attempt to install List::BinarySearch::XS unless
-LBS_NO_XS is set prior to install, or in interactive mode, the user
-opts to skip this recommended step.
+This module will attempt to install List::BinarySearch::XS unless the
+environment variable C<LBS_NO_XS> is set prior to install, or if in interactive
+mode, the user opts to skip this recommended step.
 
 This module supports Perl versions 5.8 and newer.
 The optional XS extension also supports Perl 5.8 and newer.

@@ -17,8 +17,8 @@ our @ISA    = qw(Exporter);    ## no critic (ISA)
 our @EXPORT = qw( binsearch binsearch_pos ); ## no critic (export)
 
 
-our $VERSION = '0.13_001';
-$VERSION = eval $VERSION;  ## no critic (eval)
+our $VERSION = '0.14';
+# $VERSION = eval $VERSION;  ## no critic (eval)
 
 
 
@@ -45,6 +45,7 @@ sub binsearch (&$\@) {
       no strict 'refs'; ## no critic(strict)
       local ( ${caller() . '::a'}, ${caller() . '::b'} )
         = ( $target, $aref->[$min] );
+      # uncoverable condition left false ($max always == $min)
       return $min
         if $max == $min && $code->( $target, $aref->[$min] ) == 0;
     }
@@ -87,8 +88,10 @@ List::BinarySearch::PP - Pure-Perl Binary Search functions.
 
 =head1 SYNOPSIS
 
-This module is a (default) plugin for List::BinarySearch.  It is provided by
-the L<List::BinarySearch> distribution.
+This module is a plugin for List::BinarySearch providing a graceful fallback to
+a pure-Perl binary search implementation in case the optional (but default)
+List::BinarySearch::XS dependency cannot be built on a target system.  It is
+provided by the L<List::BinarySearch> distribution.
 
 Examples:
 
@@ -117,9 +120,9 @@ the documentation for L<List::BinarySearch> for a full description of those
 functions.  What follows is a very brief overview.
 
 These pure-Perl functions will be overridden by XS code when used via
-L<List::BinarySearch> if L<List::BinarySearch::XS> is installed (recommended).
-The pure-Perl functions exist as a gracefull downgrade in case users aren't
-able to use XS modules.
+L<List::BinarySearch> if L<List::BinarySearch::XS> is installed (the default,
+and recommended). The pure-Perl functions exist as a gracefull downgrade in case
+users aren't able to use XS modules.
 
 
 =head1 EXPORT
@@ -148,7 +151,7 @@ it isn't found.
 
 =head1 CONFIGURATION AND ENVIRONMENT
 
-Perl 5.6 or newer required.  This module is part of the L<List::BinarySearch>
+Perl 5.8 or newer required.  This module is part of the L<List::BinarySearch>
 distribution, and is intended for use by the C<List::BinarySearch> module.
 Though the user interface is unlikely to change, it shouldn't be directly used
 by code outside of this distribution.
