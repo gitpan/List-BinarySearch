@@ -40,7 +40,7 @@ our %EXPORT_TAGS = ( all => \@EXPORT_OK );
 # The prototyping gives List::BinarySearch a similar feel to List::Util,
 # and List::MoreUtils.
 
-our $VERSION = '0.22';
+our $VERSION = '0.23';
 
 # Needed for developer's releases: See perlmodstyle.
 # $VERSION = eval $VERSION;    ## no critic (eval,version)
@@ -49,7 +49,7 @@ our $VERSION = '0.22';
 # Custom import() to touch $a and $b in Perl version < 5.20, to eliminate
 # "used only once" warnings.
 {
-  if( $] < 5.040 ) {
+  if( $] < 5.020 ) {
     *import = sub {
       my $pkg = caller;
       no strict 'refs'; ## no critic(strict)

@@ -1,5 +1,8 @@
 Revision history for List::BinarySearch
 
+0.23 2014-12-01
+  - Remove some diagnostics code.
+
 0.22 2014-12-01
   - Comment reason why we goto &Exporter::import rather than calling SUPER::.
   - Make it easier to manage distribution version numbering.
